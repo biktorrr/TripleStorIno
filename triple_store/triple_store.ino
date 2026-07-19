@@ -21,6 +21,13 @@
 #include <LiquidCrystal.h>
 
 
+// ------
+// LEDS
+// ------
+
+#define RED_LED_PIN 6
+#define GREEN_LED_PIN 7
+
 // -------------------------
 // LCD
 // -------------------------
@@ -639,6 +646,8 @@ else if (contains(query, "DELETE WHERE"))
     client.println("Unknown SPARQL");
   }
 
+  updateLEDs();
+
 }
 
 
@@ -764,7 +773,43 @@ void handleEthernet()
 
 }
 
-// Part 4
+// ------------
+// UPDATE LEDS
+// ------------
+
+void updateLEDs()
+{
+  bool red = false;
+  bool green = false;
+
+
+  for(int i=0; i<tripleCount; i++)
+  {
+    char *s = dictionary[triples[i].s];
+    char *p = dictionary[triples[i].p];
+    char *o = dictionary[triples[i].o];
+
+
+    if(strcmp(s,"ledred")==0 &&
+       strcmp(p,"status")==0 &&
+       strcmp(o,"on")==0)
+    {
+      red = true;
+    }
+
+
+    if(strcmp(s,"ledgreen")==0 &&
+       strcmp(p,"status")==0 &&
+       strcmp(o,"on")==0)
+    {
+      green = true;
+    }
+  }
+
+
+  digitalWrite(RED_LED_PIN, red);
+  digitalWrite(GREEN_LED_PIN, green);
+}
 
 // ======================================================
 // ARDUINO SETUP
@@ -774,6 +819,16 @@ void handleEthernet()
 void setup()
 {
 
+  // -------------------------
+  // LEDS
+  // -------------------------
+  pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(GREEN_LED_PIN, OUTPUT);
+
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, LOW);
+
+// --- serial ---
   Serial.begin(9600);
 
 

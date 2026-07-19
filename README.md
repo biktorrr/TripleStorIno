@@ -1,54 +1,82 @@
 # Arduino RDF Triple Store with SPARQL Endpoint
 
-A lightweight RDF triple store running on an **Arduino Uno** with an **Arduino Ethernet Shield (W5100)** and an optional **16x2 LCD**. The project demonstrates that a resource-constrained microcontroller can expose a simple Semantic Web interface over HTTP.
+A lightweight RDF triple store running on an **Arduino Uno** with an **Arduino Ethernet Shield (W5100)** and an optional **16x2 LCD**. The project demonstrates that a resource-constrained microcontroller can expose a simple Semantic Web interface over HTTP and use RDF triples to control physical devices.
 
 ## Features
 
 * Lightweight in-memory RDF triple store
-* Simple HTTP server using the official Ethernet library
+* HTTP server using the Arduino Ethernet library
 * SPARQL-like endpoint over HTTP GET
 * Supports:
 
   * `SELECT`
   * `INSERT DATA`
+  * `DELETE DATA`
+  * `DELETE WHERE`
+* Duplicate triple detection
 * 16x2 LCD displaying the current number of stored triples
+* RDF-controlled LED actuators
 * Designed to run on an Arduino Uno (2 KB SRAM)
 
 ## Hardware
 
 * Arduino Uno
-* Official Arduino Ethernet Shield (W5100)
+* Arduino Ethernet Shield (W5100)
 * LCM1602C 16x2 LCD (parallel interface)
-* 10 kΩ potentiometer (LCD contrast)
+* 10 kΩ potentiometer for LCD contrast
+* Red LED + 220 Ω resistor
+* Green LED + 220 Ω resistor
 
-## LCD Wiring
+## Wiring
 
-| LCD | Arduino       |
-| --- | ------------- |
-| RS  | A0            |
-| E   | A1            |
-| D4  | A2            |
-| D5  | A3            |
-| D6  | A4            |
-| D7  | A5            |
-| RW  | GND           |
-| VSS | GND           |
-| VDD | 5V            |
-| VO  | Potentiometer |
-| A   | 5V            |
-| K   | GND           |
+### LCD
 
-The Ethernet shield uses pins D10–D13 for SPI.
+| LCD pin | Arduino       |
+| ------- | ------------- |
+| RS      | A0            |
+| E       | A1            |
+| D4      | A2            |
+| D5      | A3            |
+| D6      | A4            |
+| D7      | A5            |
+| RW      | GND           |
+| VSS     | GND           |
+| VDD     | 5V            |
+| VO      | Potentiometer |
+| A       | 5V            |
+| K       | GND           |
+
+The Ethernet shield uses D10–D13 for SPI.
+
+### LEDs
+
+| Component           | Arduino                    |
+| ------------------- | -------------------------- |
+| Red LED anode (+)   | D6                         |
+| Green LED anode (+) | D7                         |
+| LED cathodes (-)    | GND through 220 Ω resistor |
 
 ## HTTP API
 
-The Arduino exposes a SPARQL endpoint at:
+The Arduino exposes a SPARQL endpoint:
 
 ```text
-http://<arduino-ip>/sparql?query=...
+http://<arduino-ip>/sparql?query=<SPARQL query>
 ```
 
-### Insert
+Example:
+
+```text
+http://192.168.178.50/sparql?query=...
+```
+
+---
+
+# SPARQL Operations
+
+## INSERT DATA
+
+Add a triple:
 
 ```sparql
 INSERT DATA {
@@ -56,13 +84,24 @@ INSERT DATA {
 }
 ```
 
-Example URL:
+Example:
 
 ```text
 http://192.168.178.50/sparql?query=INSERT+DATA+%7B+%3Calice%3E+%3Cknows%3E+%3Cbob%3E+%7D
 ```
 
-### Select all triples
+Response:
+
+```text
+OK
+triples=1
+```
+
+---
+
+## SELECT
+
+Retrieve all triples:
 
 ```sparql
 SELECT ?s ?p ?o
@@ -71,51 +110,184 @@ WHERE {
 }
 ```
 
-Example URL:
-
-```text
-http://192.168.178.50/sparql?query=SELECT+%3Fs+%3Fp+%3Fo+WHERE+%7B+%3Fs+%3Fp+%3Fo+%7D
-```
-
-## Example Output
+Example output:
 
 ```text
 alice | knows | bob
 bob | type | person
 ```
 
-## Limitations
+---
 
-This project is intentionally minimal to fit within the Arduino Uno's hardware constraints.
+## DELETE DATA
 
-Current limitations include:
+Delete an exact triple:
 
-* Approximately 15–30 triples (depending on configuration)
-* Short resource names (fixed-length strings)
-* Single triple pattern in `WHERE`
-* No `FILTER`
-* No `OPTIONAL`
-* No `UNION`
+```sparql
+DELETE DATA {
+  <alice> <knows> <bob>
+}
+```
+
+---
+
+## DELETE WHERE
+
+Delete triples matching a pattern.
+
+Delete all triples:
+
+```sparql
+DELETE WHERE {
+  ?s ?p ?o
+}
+```
+
+Delete all relationships of Alice:
+
+```sparql
+DELETE WHERE {
+  <alice> <knows> ?o
+}
+```
+
+Delete all type statements:
+
+```sparql
+DELETE WHERE {
+  ?s <type> ?o
+}
+```
+
+---
+
+# RDF Controlled LEDs
+
+The LEDs are controlled by RDF triples.
+
+The Arduino continuously interprets the RDF graph and updates the physical outputs.
+
+## Turn on red LED
+
+Insert:
+
+```sparql
+INSERT DATA {
+  <ledred> <status> <on>
+}
+```
+
+The Arduino switches:
+
+```
+D6 = HIGH
+```
+
+## Turn on green LED
+
+Insert:
+
+```sparql
+INSERT DATA {
+  <ledgreen> <status> <on>
+}
+```
+
+The Arduino switches:
+
+```
+D7 = HIGH
+```
+
+The RDF graph acts as the device state:
+
+```turtle
+<ledred>   <status> <on>.
+<ledgreen> <status> <on>.
+```
+
+---
+
+# Example Workflow
+
+Clear the device:
+
+```sparql
+DELETE WHERE {
+  ?s ?p ?o
+}
+```
+
+Add a device state:
+
+```sparql
+INSERT DATA {
+  <ledred> <status> <on>
+}
+```
+
+Query the graph:
+
+```sparql
+SELECT ?s ?p ?o
+WHERE {
+  ?s ?p ?o
+}
+```
+
+Result:
+
+```text
+ledred | status | on
+```
+
+The physical LED reflects the RDF state.
+
+---
+
+# Limitations
+
+This project is intentionally minimal to fit within Arduino Uno constraints.
+
+Current limitations:
+
+* Small in-memory graph
+* Limited number of triples (depends on configuration)
+* Short resource names
+* Simplified SPARQL parser
 * No prefixes (`PREFIX`)
-* No inference or reasoning
-* Data is stored only in RAM (no persistence)
-
-## Motivation
-
-The project explores how Semantic Web concepts can be applied to embedded systems and Internet of Things (IoT) devices. Instead of exposing device-specific APIs, the Arduino exposes its state through RDF and can be queried and updated using SPARQL.
-
-This serves as a proof of concept for lightweight semantic devices that can participate directly in Linked Data ecosystems.
+* No full SPARQL algebra
+* No inference/reasoning
+* No persistence after reboot
 
 ## Future Work
 
-Possible extensions include:
+Possible extensions:
 
-* RDF/Turtle export endpoint
 * SD card persistence
-* SPARQL `DELETE DATA`
-* Multiple triple patterns
-* Prefix support
-* RDF serialization formats
-* Semantic control of LEDs, servos, sensors and RFID readers
-* Basic RDFS reasoning
-* Support for additional Arduino boards with larger memory (e.g. Mega 2560)
+* RDF/Turtle export endpoint
+* Full triple pattern matching
+* SPARQL prefixes
+* RDFS reasoning
+* RFID-controlled resources
+* Servo and sensor control through RDF
+* Generic semantic actuator framework
+* Larger Arduino boards (Mega, ESP32)
+
+# Motivation
+
+This project explores how Semantic Web technologies can be embedded into very small devices.
+
+Instead of exposing device-specific APIs, the Arduino exposes a graph of resources and states:
+
+```
+RDF graph
+    |
+    v
+SPARQL endpoint
+    |
+    v
+Physical world
+```
+
+The goal is to demonstrate a tiny semantic IoT node where devices can describe and control themselves using Linked Data principles.
