@@ -97,6 +97,90 @@ byte getResource(char *value)
 
 
 // -------------------------
+// Delete RDF triple
+// -------------------------
+bool deleteTriple(char *s, char *p, char *o)
+{
+    byte sid = 255;
+    byte pid = 255;
+    byte oid = 255;
+
+    // Find resource IDs
+    for (int i = 0; i < resourceCount; i++) {
+        if (strcmp(dictionary[i], s) == 0) sid = i;
+        if (strcmp(dictionary[i], p) == 0) pid = i;
+        if (strcmp(dictionary[i], o) == 0) oid = i;
+    }
+
+    if (sid == 255 || pid == 255 || oid == 255)
+        return false;
+
+    // Find matching triple
+    for (int i = 0; i < tripleCount; i++) {
+
+        if (triples[i].s == sid &&
+            triples[i].p == pid &&
+            triples[i].o == oid)
+        {
+            // Shift remaining triples down
+            for (int j = i; j < tripleCount - 1; j++)
+                triples[j] = triples[j + 1];
+
+            tripleCount--;
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// -------------------------
+// Delete WHERE 
+// -------------------------
+
+bool deleteWhere(char *patternS, char *patternP, char *patternO)
+{
+    int deleted = 0;
+
+    // Iterate backwards so shifting the array is easy
+    for(int i = tripleCount - 1; i >= 0; i--)
+    {
+        bool match = true;
+
+        if(patternS[0] != '?')
+        {
+            if(strcmp(dictionary[triples[i].s], patternS) != 0)
+                match = false;
+        }
+
+        if(patternP[0] != '?')
+        {
+            if(strcmp(dictionary[triples[i].p], patternP) != 0)
+                match = false;
+        }
+
+        if(patternO[0] != '?')
+        {
+            if(strcmp(dictionary[triples[i].o], patternO) != 0)
+                match = false;
+        }
+
+        if(match)
+        {
+            // Remove triple by shifting remaining entries
+            for(int j = i; j < tripleCount - 1; j++)
+                triples[j] = triples[j + 1];
+
+            tripleCount--;
+            deleted++;
+        }
+    }
+
+    return deleted > 0;
+}
+
+// -------------------------
 // Add RDF triple
 // -------------------------
 bool addTriple(char *s, char *p, char *o)
@@ -222,6 +306,69 @@ bool contains(char *text,char *key)
 }
 
 
+// ------------------------------------------------------
+// DELETE WHERE
+// ------------------------------------------------------
+bool parseDeleteWhere(char *query)
+{
+    char patternS[32];
+    char patternP[32];
+    char patternO[32];
+
+    char *where = strstr(query, "WHERE");
+
+    if(!where)
+        return false;
+
+    char *body = strchr(where, '{');
+
+    if(!body)
+        return false;
+
+    sscanf(
+        body,
+        "{ %31s %31s %31s",
+        patternS,
+        patternP,
+        patternO
+    );
+
+    cleanToken(patternS);
+    cleanToken(patternP);
+    cleanToken(patternO);
+
+    return deleteWhere(
+        patternS,
+        patternP,
+        patternO
+    );
+}
+
+// ------------------------------------------------------
+// DELETE DATA
+// ------------------------------------------------------
+
+bool parseDelete(char *query)
+{
+    char *start = strstr(query, "{");
+
+    if (!start)
+        return false;
+
+    char s[32];
+    char p[32];
+    char o[32];
+
+    int found = sscanf(
+        start,
+        "{ <%31[^>]> <%31[^>]> <%31[^>]>",
+        s, p, o);
+
+    if (found == 3)
+        return deleteTriple(s, p, o);
+
+    return false;
+}
 
 // ------------------------------------------------------
 // INSERT DATA
@@ -436,7 +583,23 @@ void processSPARQL(
 
   }
 
+  else if (contains(query, "DELETE DATA"))
+  {
+      bool ok = parseDelete(query);
 
+      if (ok)
+      {
+          client.println(F("OK"));
+          client.print(F("triples="));
+          client.println(tripleCount);
+      }
+      else
+      {
+          client.println(F("DELETE ERROR"));
+      }
+
+      updateLCD();
+  }
   else if(contains(query,"SELECT"))
   {
 
@@ -453,6 +616,23 @@ void processSPARQL(
 
   }
 
+else if (contains(query, "DELETE WHERE"))
+{
+    bool ok = parseDeleteWhere(query);
+
+    if(ok)
+    {
+        client.println(F("OK"));
+        client.print(F("triples="));
+        client.println(tripleCount);
+    }
+    else
+    {
+        client.println(F("No triples deleted"));
+    }
+
+    updateLCD();
+}
 
   else
   {
